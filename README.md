@@ -48,7 +48,7 @@ Here’s what INVISIO can do:
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/INVISIO.git
+git clone https://github.com/INVISIOPROJECT/INVISIO.git
 cd INVISIO
 pip install -r requirements.txt
 
