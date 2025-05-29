@@ -10,6 +10,7 @@ from datetime import datetime
 CSV_PATH = "news_data.csv"  # عدل المسار إذا لزم
 TEXT_COLUMN = "Headlines"        # عدل العمود حسب الحاجة
 SAVE_JSON_PATH = "sentiment_results.json"
+SAVE_JSON_PATH = "sentiment_results.json"
 
 print(" Loading data...")
 df = pd.read_csv(CSV_PATH)
