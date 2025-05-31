@@ -1,39 +1,46 @@
-# analyzer.py
-
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 import torch.nn.functional as F
+from tqdm import tqdm
 
 class SentimentAnalyzer:
     def __init__(self):
+        print("Loading sentiment analysis model...")
         self.tokenizer = AutoTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
         self.model = AutoModelForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-sentiment")
         self.labels = ["negative", "neutral", "positive"]
 
-    def analyze_text(self, text):
-        inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
-        with torch.no_grad():
-            logits = self.model(**inputs).logits
-        probs = F.softmax(logits, dim=1).squeeze().tolist()
-        pred_index = int(torch.argmax(torch.tensor(probs)))
-        return {
-            "text": text,
-            "label": self.labels[pred_index],
-            "confidence": round(probs[pred_index], 4),
-            "score_distribution": {
-                "negative": round(probs[0], 4),
-                "neutral": round(probs[1], 4),
-                "positive": round(probs[2], 4)
-            }
-        }
-
-    def analyze_batch(self, texts):
+    def analyze_batch_json(self, json_data, batch_size=32):
+        texts = json_data.get("texts", [])
         results = []
-        valid_texts = [t if isinstance(t, str) and t.strip() != "" else "" for t in texts]
 
-        for text in valid_texts:
-            if text == "":
-                results.append({
+        print(f"Analyzing {len(texts)} texts in batches of {batch_size}...")
+
+        for i in tqdm(range(0, len(texts), batch_size)):
+            batch_texts = texts[i:i + batch_size]
+            batch_results = self._analyze_batch(batch_texts)
+            results.extend(batch_results)
+
+        return {"results": results}
+
+    def _analyze_batch(self, texts):
+        clean_texts = [t if isinstance(t, str) and t.strip() != "" else None for t in texts]
+        encoded = self.tokenizer(
+            [t if t else "" for t in clean_texts],
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=512
+        )
+
+        with torch.no_grad():
+            logits = self.model(**encoded).logits
+            probs = F.softmax(logits, dim=1).tolist()
+
+        batch_results = []
+        for i, text in enumerate(texts):
+            if clean_texts[i] is None:
+                batch_results.append({
                     "text": text,
                     "label": "undefined",
                     "confidence": 0.0,
@@ -45,20 +52,17 @@ class SentimentAnalyzer:
                     "error_message": "empty or invalid text"
                 })
             else:
-                try:
-                    result = self.analyze_text(text)
-                    result["error_message"] = None
-                    results.append(result)
-                except Exception as e:
-                    results.append({
-                        "text": text,
-                        "label": "error",
-                        "confidence": 0.0,
-                        "score_distribution": {
-                            "negative": 0.0,
-                            "neutral": 0.0,
-                            "positive": 0.0
-                        },
-                        "error_message": str(e)
-                    })
-        return results
+                pred_index = int(torch.tensor(probs[i]).argmax())
+                batch_results.append({
+                    "text": text,
+                    "label": self.labels[pred_index],
+                    "confidence": round(probs[i][pred_index], 4),
+                    "score_distribution": {
+                        "negative": round(probs[i][0], 4),
+                        "neutral": round(probs[i][1], 4),
+                        "positive": round(probs[i][2], 4)
+                    },
+                    "error_message": None
+                })
+
+        return batch_results
